@@ -28,12 +28,19 @@ public class HSServer extends WebSocketServer {
     public HSServer( InetSocketAddress address ,Activity ctx) {
         super( address );
         this.context = ctx;
-        clientMessageArea = (EditText)this.context.findViewById(R.id.lblRecievedMessages);
+        clientMessageArea = (EditText)this.context.findViewById(R.id.editText);
+        clientMessageArea.setLines(10);
     }
 
     @Override
     public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
-        Toast.makeText(this.context.getApplicationContext(),"New client is connected", Toast.LENGTH_LONG);
+        //Toast.makeText(this.context.getApplicationContext(),"New client is connected", Toast.LENGTH_LONG);
+        clientMessageArea.post(new Runnable() {
+            @Override
+            public void run() {
+                clientMessageArea.setText("New client is connected");
+            }
+        });
     }
 
     @Override
@@ -54,7 +61,9 @@ public class HSServer extends WebSocketServer {
 
     @Override
     public void onError(WebSocket webSocket, Exception e) {
-
+        //Toast.makeText(this.context.getApplicationContext(),"New client is connected", Toast.LENGTH_LONG);
+        String message = e.getMessage();
+        System.out.println(message);
     }
 
     public void sendToAll( String text ) {

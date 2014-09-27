@@ -35,6 +35,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.http.Header;
 import org.apache.http.HttpMessage;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
@@ -318,7 +319,7 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
 					while ( i.hasNext() ) {
 						key = i.next();
 
-						if( !key.isValid() ) {
+						if( key.isValid() == false ) {
 							// Object o = key.attachment();
 							continue;
 						}
@@ -330,81 +331,8 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
 							}
 
 							SocketChannel channel = server.accept();
-                            //region added by ebi
-                            ByteBuffer buf = ByteBuffer.wrap(new byte[1024]) ;
-                            int numOfReadBytes = channel.read(buf);
-                            if (numOfReadBytes > 0)
-                            {
-                                buf.flip();
-                                byte[] bufBytes  = new byte[buf.remaining()];
-                                try {
-                                    buf.get(bufBytes);
-                                }
-                                catch (Exception e)
-                                {
-                                    e.printStackTrace();
-                                }
-                                String request = null;
-                                try {
-                                    request = new String(bufBytes, UTF_8);
-                                }catch (Exception e){
-                                    e.printStackTrace();
-                                }
-                                if (request != null){
-                                    try {
-                                        HttpRequest httpRequest = ApacheRequestFactory.create(request);
-                                        if (httpRequest.containsHeader(HTTP.USER_AGENT) == true)
-                                        {
-                                            String newLine = "\r\n";
-                                            if (httpRequest.getRequestLine().getUri().equals("/")) {
-                                                String content = WebSocketServerIndexPage.getContentAsString("ws://127.0.0.1:8092");
-
-                                                Integer length = content.length();
-                                                //responce.addHeader(HTTP.CONTENT_LEN, length.toString());
-                                                content = "HTTP/1.1 200 OK" + newLine + "Content-Type: text/html; charset=UTF-8" + newLine +
-                                                        "Content-Length: " + length.toString() + newLine + newLine + content;
-                                                CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
-
-                                                CharBuffer cb = CharBuffer.wrap(content.toCharArray());
-                                                ByteBuffer bb = null;
-                                                try {
-                                                    bb = encoder.encode(cb);
-                                                } catch (CharacterCodingException e) {
-                                                    e.printStackTrace();
-                                                }
-                                                while (bb.hasRemaining()) {
-                                                    channel.write(bb);
-                                                }
-                                                i.remove();
-                                                continue;
-                                            }
-                                            if ("/favicon.ico".equals(httpRequest.getRequestLine().getUri())) {
-                                                String responce = "HTTP/1.1 404 NOT_FOUND";
-                                                CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
-
-                                                CharBuffer cb = CharBuffer.wrap(responce.toCharArray());
-                                                ByteBuffer bb = null;
-                                                try {
-                                                    bb = encoder.encode(cb);
-                                                } catch (CharacterCodingException e) {
-                                                    e.printStackTrace();
-                                                }
-                                                while (bb.hasRemaining()) {
-                                                    channel.write(bb);
-                                                }
-                                                i.remove();
-                                                continue;
-                                            }
-                                        }
-
-                                    }catch(Exception e){
-                                        //int x = 20;
-                                        //Do nothing
-                                    }
-                                }
-                            }
-                            //endregion
                             channel.configureBlocking( false );
+
                             WebSocketImpl w = wsf.createWebSocket( this, drafts, channel.socket() );
 							w.key = channel.register( selector, SelectionKey.OP_READ, w );
 							w.channel = wsf.wrapChannel( channel, w.key );
@@ -417,32 +345,38 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
 							conn = (WebSocketImpl) key.attachment();
 							ByteBuffer buf = takeBuffer();
 							try {
-								if( SocketChannelIOHelper.read( buf, conn, conn.channel ) ) {
-									if( buf.hasRemaining() ) {
+                                if (SocketChannelIOHelper.read(buf, conn, conn.channel)) {
+                                    if (buf.hasRemaining()) {
                                         //***********************************************************************
                                         //region added by ebi
-                                        /*byte[] bufBytes  = new byte[buf.remaining()];
+                                        //ByteBuffer buf = ByteBuffer.allocate(1024) ;
+                                        //int numOfReadBytes = channel.read(buf);
+                                        //if (buf.hasRemaining())
+                                        //{
+                                        //buf.flip();
+                                        byte[] bufBytes = new byte[buf.remaining()];
                                         try {
                                             buf.get(bufBytes);
-                                        }
-                                        catch (Exception e)
-                                        {
+                                            buf.rewind();
+                                        } catch (Exception e) {
                                             e.printStackTrace();
                                         }
                                         String request = null;
                                         try {
-                                            request = new String(bufBytes, US_ASCII);
-                                        }catch (Exception e){
+                                            request = new String(bufBytes, UTF_8);
+                                            //bufBytes = null;
+                                        } catch (Exception e) {
+                                            //bufBytes = null;
                                             e.printStackTrace();
                                         }
-                                        if (request != null){
+                                        if (request != null) {
                                             try {
                                                 HttpRequest httpRequest = ApacheRequestFactory.create(request);
-                                                if (httpRequest.containsHeader(HTTP.USER_AGENT) == true)
-                                                {
+                                                if (httpRequest.containsHeader(HTTP.USER_AGENT) == true &&
+                                                        this.isWebsocketConnectionRequest(httpRequest) == false) {
                                                     String newLine = "\r\n";
                                                     if (httpRequest.getRequestLine().getUri().equals("/")) {
-                                                        String content = WebSocketServerIndexPage.getContentAsString("127.0.0.1:8092");
+                                                        String content = WebSocketServerIndexPage.getContentAsString("ws://127.0.0.1:8092");
 
                                                         Integer length = content.length();
                                                         //responce.addHeader(HTTP.CONTENT_LEN, length.toString());
@@ -457,8 +391,12 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
                                                         } catch (CharacterCodingException e) {
                                                             e.printStackTrace();
                                                         }
-                                                        conn.channel.write(bb);
-                                                        //continue;
+                                                        while (bb.hasRemaining()) {
+                                                            conn.channel.write(bb);
+                                                        }
+                                                        i.remove();
+                                                        key.cancel();
+                                                        continue;
                                                     }
                                                     if ("/favicon.ico".equals(httpRequest.getRequestLine().getUri())) {
                                                         String responce = "HTTP/1.1 404 NOT_FOUND";
@@ -471,32 +409,37 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
                                                         } catch (CharacterCodingException e) {
                                                             e.printStackTrace();
                                                         }
-                                                        conn.channel.write(bb);
-                                                        //continue;
+                                                        while (bb.hasRemaining()) {
+                                                            conn.channel.write(bb);
+                                                        }
+                                                        i.remove();
+                                                        key.cancel();
+                                                        continue;
                                                     }
                                                 }
 
-                                            }catch(Exception e){
+                                            } catch (Exception e) {
                                                 //int x = 20;
                                                 //Do nothing
                                             }
-                                        }*/
+                                        }
+                                        //}
                                         //endregion
                                         //**************************************************************************************
-										conn.inQueue.put( buf );
-										queue( conn );
-										i.remove();
-										if( conn.channel instanceof WrappedByteChannel ) {
-											if( ( (WrappedByteChannel) conn.channel ).isNeedRead() ) {
-												iqueue.add( conn );
-											}
-										}
-									} else
-										pushBuffer( buf );
-								} else {
-									pushBuffer( buf );
-								}
-							} catch ( IOException e ) {
+                                        conn.inQueue.put(buf);
+                                        queue(conn);
+                                        i.remove();
+                                        if (conn.channel instanceof WrappedByteChannel) {
+                                            if (((WrappedByteChannel) conn.channel).isNeedRead()) {
+                                                iqueue.add(conn);
+                                            }
+                                        }
+                                    } else
+                                        pushBuffer(buf);
+                                } else {
+                                    pushBuffer(buf);
+                                }
+                            } catch ( IOException e ) {
 								pushBuffer( buf );
 								throw e;
 							}
@@ -559,8 +502,23 @@ public abstract class WebSocketServer extends WebSocketAdapter implements Runnab
 			}
 		}
 	}
+    //******************************************************************************
+    private boolean isWebsocketConnectionRequest(HttpRequest request)
+    {
+        boolean result = false;
+        Header[] requestHeaders = request.getHeaders("Upgrade");
+        for (int i = 0; i<requestHeaders.length; i++)
+        {
+            if (requestHeaders[i].getValue().toLowerCase().equals("websocket"))
+            {
+                result = true;
+            }
+        }
+        return result;
+    }
+    //******************************************************************************
 	protected void allocateBuffers( WebSocket c ) throws InterruptedException {
-		if( queuesize.get() >= 2 * decoders.size() + 1 ) {
+		if( queuesize.get() >= 2 * decoders.size() + 3 ) {
 			return;
 		}
 		queuesize.incrementAndGet();
